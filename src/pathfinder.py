@@ -24,6 +24,11 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
+def is_in_paris(lat: float, lon: float) -> bool:
+    """Vérifie approximativement si une station est dans Paris intra-muros (ou limitrophe immédiat)."""
+    return (48.815 <= lat <= 48.905) and (2.224 <= lon <= 2.420)
+
+
 class TransitPathfinder:
     def __init__(self) -> None:
         with open(GRAPH_FILE, "r", encoding="utf-8") as f:
@@ -35,7 +40,7 @@ class TransitPathfinder:
         self.adj = data["adj"]
         self.bar_links = data["bar_links"]
 
-        # Index spatial KDTree sur les stations "hub" pour connecter n'importe quel point d'Île-de-France
+        # Index spatial KDTree sur les stations "hub"
         self.hub_ids = [nid for nid, n in self.nodes.items() if n["type"] == "hub"]
         hub_xy = np.array([
             [self.nodes[nid]["lat"] * SCALE_LAT, self.nodes[nid]["lon"] * SCALE_LON]
@@ -43,14 +48,19 @@ class TransitPathfinder:
         ])
         self.kdtree = KDTree(hub_xy)
 
+        # Index spatial KDTree sur les bars pour la recherche rapide autour d'une station
+        bar_xy = np.array([
+            [b["lat"] * SCALE_LAT, b["lon"] * SCALE_LON]
+            for b in self.bars
+        ])
+        self.bar_kdtree = KDTree(bar_xy)
+
     def _run_single_dijkstra(self, start_lat: float, start_lon: float, person_idx: int):
-        """Lance Dijkstra depuis la position (banlieue ou Paris) d'un participant."""
         dist = {}
         parent = {}
         pq = []
         explored_segments = []
 
-        # Connecter le point de départ aux 6 stations/gares les plus proches à pied
         sx, sy = start_lat * SCALE_LAT, start_lon * SCALE_LON
         _, near_idxs = self.kdtree.query([sx, sy], k=6)
 
@@ -84,7 +94,6 @@ class TransitPathfinder:
                     parent[v] = (u, edge["mode"], edge["line"])
                     heapq.heappush(pq, (nd, v))
 
-                    # On enregistre les déplacements physiques pour l'animation
                     v_node = self.nodes[v]
                     if edge["mode"] != "transfer":
                         explored_segments.append({
@@ -97,19 +106,10 @@ class TransitPathfinder:
 
         return dist, parent, explored_segments
 
-    def reconstruct_path(self, parent: dict, start_pos: list, best_hub: str, bar: dict) -> list:
-        """Reconstruit le tracé exact (liste de segments) d'un ami jusqu'au bar choisi."""
+    def reconstruct_path_to_hub(self, parent: dict, start_pos: list, hub_id: str) -> list:
+        """Reconstruit le chemin d'un ami jusqu'à une station (hub_id)."""
         segments = []
-        # Dernier kilomètre : de la station d'arrivée jusqu'au bar à pied
-        st = self.nodes[best_hub]
-        segments.append({
-            "from": [st["lat"], st["lon"]],
-            "to": [bar["lat"], bar["lon"]],
-            "mode": "WALK",
-            "label": f"Marche vers {bar['name']}",
-        })
-
-        curr = best_hub
+        curr = hub_id
         while curr in parent:
             prev, mode, line = parent[curr]
             curr_node = self.nodes[curr]
@@ -134,8 +134,55 @@ class TransitPathfinder:
         segments.reverse()
         return segments
 
+    def reconstruct_path_to_bar(self, parent: dict, start_pos: list, best_hub: str, bar: dict) -> list:
+        """Reconstruit le chemin d'un ami jusqu'au bar choisi."""
+        if best_hub == "DIRECT":
+            return [{
+                "from": start_pos,
+                "to": [bar["lat"], bar["lon"]],
+                "mode": "WALK",
+                "label": f"Marche directe vers {bar['name']}",
+            }]
+
+        segments = self.reconstruct_path_to_hub(parent, start_pos, best_hub)
+        st = self.nodes[best_hub]
+        segments.append({
+            "from": [st["lat"], st["lon"]],
+            "to": [bar["lat"], bar["lon"]],
+            "mode": "WALK",
+            "label": f"Marche vers {bar['name']}",
+        })
+        return segments
+
+    def get_bars_around_station(self, hub_id: str, max_walk_min: float) -> list[dict]:
+        """Retourne tous les bars situés à moins de N minutes de marche d'une station."""
+        if hub_id not in self.nodes:
+            return []
+        st = self.nodes[hub_id]
+        # Distance max à vol d'oiseau correspondant à max_walk_min minutes de marche
+        max_euclid_m = (max_walk_min * 60.0 * WALK_SPEED_MPS) / DETOUR_FACTOR
+
+        sx, sy = st["lat"] * SCALE_LAT, st["lon"] * SCALE_LON
+        near_idxs = self.bar_kdtree.query_ball_point([sx, sy], r=max_euclid_m)
+
+        results = []
+        for b_idx in near_idxs:
+            bar = self.bars[b_idx]
+            d_m = haversine_m(st["lat"], st["lon"], bar["lat"], bar["lon"])
+            walk_min = ((d_m * DETOUR_FACTOR) / WALK_SPEED_MPS) / 60.0
+            if walk_min <= max_walk_min:
+                results.append({
+                    "bar_index": b_idx,
+                    "bar": bar,
+                    "walk_min": round(walk_min, 1),
+                    "dist_m": round(d_m),
+                })
+
+        results.sort(key=lambda x: x["walk_min"])
+        return results
+
     def solve(self, locations: list[dict]):
-        """Exécute le Multi-Source Dijkstra pour tous les amis et évalue les 2036 bars."""
+        """Exécute le Multi-Source Dijkstra et évalue à la fois les 2036 bars et les stations parisiennes."""
         all_dists = []
         all_parents = []
         all_explored = []
@@ -146,12 +193,11 @@ class TransitPathfinder:
             all_parents.append(p)
             all_explored.extend(exp)
 
-        # Trier les segments explorés par temps croissant pour l'animation simultanée
         all_explored.sort(key=lambda x: x["t"])
-        # On échantillonne à ~1200 segments max pour que l'animation web dure ~3 secondes à 60 FPS
-        step = max(1, len(all_explored) // 1200)
+        step = max(1, len(all_explored) // 1400)
         sampled_exploration = all_explored[::step]
 
+        # 1. Évaluer tous les bars
         evaluated_bars = []
         for b_idx, bar in enumerate(self.bars):
             links = self.bar_links.get(str(b_idx), [])
@@ -160,12 +206,10 @@ class TransitPathfinder:
             reachable = True
 
             for p_idx, loc in enumerate(locations):
-                # Temps si l'ami marche directement jusqu'au bar (s'il habite déjà à côté !)
                 direct_dist = haversine_m(loc["lat"], loc["lon"], bar["lat"], bar["lon"])
                 best_t = (direct_dist * DETOUR_FACTOR) / WALK_SPEED_MPS
                 best_h = "DIRECT"
 
-                # Temps via le réseau ferré + marche finale
                 for link in links:
                     hid = link["hub_id"]
                     if hid in all_dists[p_idx]:
@@ -177,7 +221,7 @@ class TransitPathfinder:
                 if best_t == float("inf"):
                     reachable = False
                     break
-                times.append(round(best_t / 60.0, 1))  # Conversion en minutes
+                times.append(round(best_t / 60.0, 1))
                 best_hubs.append(best_h)
 
             if reachable:
@@ -188,4 +232,39 @@ class TransitPathfinder:
                     "best_hubs": best_hubs,
                 })
 
-        return evaluated_bars, all_parents, sampled_exploration
+        # 2. Évaluer toutes les stations (hubs) dans Paris (dédupliquées par nom de station)
+        station_groups = {}
+        for hid in self.hub_ids:
+            st = self.nodes[hid]
+            if not is_in_paris(st["lat"], st["lon"]):
+                continue
+
+            times = []
+            reachable = True
+            for p_idx in range(len(locations)):
+                t = all_dists[p_idx].get(hid, float("inf"))
+                if t == float("inf"):
+                    reachable = False
+                    break
+                times.append(round(t / 60.0, 1))
+
+            if reachable:
+                name = st["name"]
+                mean_t = sum(times) / len(times)
+                # Si plusieurs quais/entrées portent le même nom, on garde le hub le plus rapide en moyenne
+                if name not in station_groups or mean_t < station_groups[name]["_mean"]:
+                    station_groups[name] = {
+                        "hub_id": hid,
+                        "name": name,
+                        "lat": st["lat"],
+                        "lon": st["lon"],
+                        "times_min": times,
+                        "_mean": mean_t,
+                    }
+
+        evaluated_stations = []
+        for st_data in station_groups.values():
+            st_data.pop("_mean", None)
+            evaluated_stations.append(st_data)
+
+        return evaluated_bars, evaluated_stations, all_parents, sampled_exploration

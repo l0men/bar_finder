@@ -2,111 +2,219 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <title>Bar Finder PoC — Rendez-vous Optimal à Paris</title>
+  <title>Bar Finder v2 — Rendez-vous Optimal à Paris</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-    body { margin: 0; display: flex; height: 100vh; background: #0f172a; color: #f8fafc; }
-    #sidebar { width: 390px; padding: 20px; background: #1e293b; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; border-right: 1px solid #334155; }
-    #map { flex: 1; height: 100vh; }
-    h1 { font-size: 1.25rem; margin: 0; color: #38bdf8; }
-    .person-card { background: #0f172a; padding: 12px; border-radius: 8px; border-left: 4px solid; position: relative; }
-    .person-card input { width: 100%; padding: 8px; margin-top: 6px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white; }
-    .suggestions { background: #334155; border-radius: 6px; margin-top: 4px; max-height: 140px; overflow-y: auto; }
-    .suggestion-item { padding: 6px 10px; font-size: 0.85rem; cursor: pointer; border-bottom: 1px solid #475569; }
-    .suggestion-item:hover { background: #475569; }
-    button.primary { background: #38bdf8; color: #0f172a; border: none; padding: 12px; font-weight: 700; border-radius: 8px; cursor: pointer; font-size: 1rem; }
-    button.primary:hover { background: #0284c7; color: white; }
-    .slider-box { background: #0f172a; padding: 14px; border-radius: 8px; border: 1px solid #334155; }
-    input[type="range"] { width: 100%; margin: 10px 0; }
-    .result-card { background: #064e3b; padding: 14px; border-radius: 8px; border: 1px solid #10b981; display: none; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+    body { margin: 0; display: flex; height: 100vh; background: #0f172a; color: #f8fafc; overflow: hidden; }
+    #sidebar { width: 430px; padding: 18px; background: #1e293b; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; border-right: 1px solid #334155; z-index: 10; }
+    #map-container { flex: 1; position: relative; height: 100vh; }
+    #map { width: 100%; height: 100%; }
+
+    h1 { font-size: 1.2rem; margin: 0; color: #38bdf8; display: flex; justify-content: space-between; align-items: center; }
+    .mode-tabs { display: flex; background: #0f172a; border-radius: 8px; padding: 4px; gap: 4px; border: 1px solid #334155; }
+    .mode-tab { flex: 1; text-align: center; padding: 8px 6px; font-size: 0.83rem; font-weight: 600; border-radius: 6px; cursor: pointer; color: #94a3b8; transition: 0.15s; }
+    .mode-tab.active { background: #38bdf8; color: #0f172a; }
+
+    .person-card { background: #0f172a; padding: 10px; border-radius: 8px; border-left: 4px solid; margin-bottom: 8px; }
+    .person-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; }
+    .person-card input { width: 100%; padding: 7px 9px; margin-top: 6px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white; font-size: 0.85rem; }
+    .btn-remove { background: transparent; border: none; color: #ef4444; cursor: pointer; font-weight: bold; font-size: 0.9rem; }
+    .btn-add { background: #334155; color: #e2e8f0; border: 1px dashed #64748b; padding: 8px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 600; width: 100%; }
+    .btn-add:hover { background: #475569; }
     .leaflet-tile { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
+
+    .suggestions { background: #334155; border-radius: 6px; margin-top: 4px; max-height: 130px; overflow-y: auto; }
+    .suggestion-item { padding: 6px 10px; font-size: 0.8rem; cursor: pointer; border-bottom: 1px solid #475569; }
+    .suggestion-item:hover { background: #475569; }
+
+    button.primary { background: #38bdf8; color: #0f172a; border: none; padding: 11px; font-weight: 700; border-radius: 8px; cursor: pointer; font-size: 0.95rem; }
+    button.primary:hover { background: #0284c7; color: white; }
+
+    .slider-box { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
+    input[type="range"] { width: 100%; margin: 6px 0; accent-color: #38bdf8; }
+
+    .top-list { display: flex; flex-direction: column; gap: 8px; }
+    .rank-card { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px 12px; cursor: pointer; transition: 0.15s; }
+    .rank-card:hover { border-color: #38bdf8; }
+    .rank-card.selected { border-color: #10b981; background: #064e3b; }
+    .rank-title { font-weight: 700; font-size: 0.92rem; color: #f8fafc; display: flex; justify-content: space-between; }
+    .rank-sub { font-size: 0.78rem; color: #94a3b8; margin-top: 3px; }
+    .pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .pill { font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; background: #1e293b; font-weight: 600; }
+
+    /* Carte de Preview OSM flottante sur la carte */
+    #osm-preview {
+      position: absolute; bottom: 24px; right: 24px; width: 340px;
+      background: rgba(15, 23, 42, 0.96); border: 1px solid #10b981;
+      border-radius: 12px; padding: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+      z-index: 1000; display: none; backdrop-filter: blur(6px);
+    }
+    .preview-badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; background: #10b981; color: #052e16; }
+    .preview-row { font-size: 0.82rem; margin-top: 8px; color: #cbd5e1; line-height: 1.4; }
+    .preview-row strong { color: #f8fafc; }
   </style>
 </head>
 <body>
 
 <div id="sidebar">
-  <h1>🍻 Bar Finder PoC (3 Potes)</h1>
-  <small style="color:#94a3b8;">Tape une adresse (Paris ou Banlieue) ou clique sur un ami puis sur la carte.</small>
+  <h1>
+    <span>🍻 Bar Finder Paris</span>
+    <span id="personCountBadge" style="font-size:0.8rem; color:#94a3b8;">3/10 potes</span>
+  </h1>
 
-  <div id="persons-container"></div>
-
-  <button class="primary" onclick="runAlgorithm()">🚀 Lancer la recherche visuelle</button>
-
-  <div class="slider-box">
-    <div style="display:flex; justify-content:space-between; font-size:0.85rem;">
-      <span>⚡ Temps Total (Min-Sum)</span>
-      <span>🤝 Équité (Min-Max)</span>
-    </div>
-    <input type="range" id="alphaSlider" min="0" max="100" value="50" oninput="updateBestBarFromSlider()" />
-    <div id="sliderLabel" style="text-align:center; font-size:0.85rem; color:#38bdf8;">Curseur : 50% Compromis Hybride</div>
+  <!-- Sélecteur de Mode -->
+  <div class="mode-tabs">
+    <div id="tab-bars" class="mode-tab active" onclick="switchMode('bars')">🍻 Top 5 Bars</div>
+    <div id="tab-station" class="mode-tab" onclick="switchMode('station')">🚇 Station + Rayon</div>
   </div>
 
-  <div id="resultBox" class="result-card">
-    <h3 id="barName" style="margin:0 0 6px 0; color:#34d399;"></h3>
-    <div id="barAddress" style="font-size:0.85rem; color:#d1fae5; margin-bottom:10px;"></div>
-    <div id="barTimes" style="font-size:0.9rem; line-height:1.6;"></div>
+  <!-- Liste dynamique de 2 à 10 personnes -->
+  <div>
+    <div id="persons-container"></div>
+    <button id="btnAddPerson" class="btn-add" onclick="addPerson()">+ Ajouter un pote (max 10)</button>
+  </div>
+
+  <button class="primary" onclick="runAlgorithm()">🚀 Calculer & Visualiser</button>
+
+  <!-- Curseur d'Équité Alpha -->
+  <div class="slider-box">
+    <div style="display:flex; justify-content:space-between; font-size:0.8rem;">
+      <span>⚡ Temps Moyen</span>
+      <span>🤝 Équité (Min-Max)</span>
+    </div>
+    <input type="range" id="alphaSlider" min="0" max="100" value="50" oninput="refreshRankings()" />
+    <div id="sliderLabel" style="text-align:center; font-size:0.8rem; color:#38bdf8;">Curseur : 50% Compromis Hybride</div>
+  </div>
+
+  <!-- Curseur de Rayon N minutes (Uniquement en mode Station) -->
+  <div id="stationRadiusBox" class="slider-box" style="display:none;">
+    <div style="display:flex; justify-content:space-between; font-size:0.82rem;">
+      <span>🚶 Rayon de marche autour de la station :</span>
+      <strong id="walkMinLabel" style="color:#34d399;">5 min</strong>
+    </div>
+    <input type="range" id="walkSlider" min="1" max="15" value="5" oninput="onWalkRadiusChange()" />
+  </div>
+
+  <!-- Résultats : Top 5 Bars ou Station + Bars dans le rayon -->
+  <div id="resultsTitle" style="font-size:0.85rem; font-weight:700; color:#94a3b8; display:none;"></div>
+  <div id="topListContainer" class="top-list"></div>
+</div>
+
+<div id="map-container">
+  <div id="map"></div>
+
+  <!-- Fiche de Preview complète OSM du bar sélectionné -->
+  <div id="osm-preview">
+    <div style="display:flex; justify-content:space-between; align-items:start;">
+      <div>
+        <span id="pv-type" class="preview-badge">BAR</span>
+        <span id="pv-terrace" class="preview-badge" style="background:#38bdf8; margin-left:4px;"></span>
+      </div>
+      <button onclick="document.getElementById('osm-preview').style.display='none'" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:1rem;">✕</button>
+    </div>
+    <h3 id="pv-name" style="margin:8px 0 4px 0; color:#34d399; font-size:1.1rem;"></h3>
+    <div class="preview-row">📍 <strong>Adresse :</strong> <span id="pv-address"></span></div>
+    <div class="preview-row">🕒 <strong>Horaires :</strong> <span id="pv-hours"></span></div>
+    <div class="preview-row">🧭 <strong>Coordonnées :</strong> <span id="pv-coords"></span></div>
+    <div class="preview-row">🆔 <strong>OSM ID :</strong> <a id="pv-osmlink" href="#" target="_blank" style="color:#38bdf8;"></a></div>
+    <div id="pv-times" class="pills" style="margin-top:10px;"></div>
   </div>
 </div>
 
-<div id="map"></div>
-
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-  const COLORS = ["#ef4444", "#3b82f6", "#eab308"]; // Rouge, Bleu, Jaune
-  const persons = [
+  const COLORS = [
+    "#ef4444", "#3b82f6", "#eab308", "#a855f7", "#ec4899",
+    "#f97316", "#14b8a6", "#84cc16", "#06b6d4", "#6366f1"
+  ];
+
+  let persons = [
     { name: "Pote 1", lat: 48.7145, lon: 2.2458, label: "Massy-Palaiseau (RER B)" },
     { name: "Pote 2", lat: 48.8924, lon: 2.3446, label: "Jules Joffrin (Paris 18e)" },
     { name: "Pote 3", lat: 48.8471, lon: 2.4393, label: "Château de Vincennes (Ligne 1)" }
   ];
-  let activePersonIdx = 0;
-  let evaluatedBars = [];
 
-  // Initialisation de la carte avec rendu Canvas pour la fluidité de l'animation
+  let activePersonIdx = 0;
+  let currentMode = "bars"; // 'bars' ou 'station'
+  let evaluatedBars = [];
+  let evaluatedStations = [];
+  let selectedStationHubId = null;
+
   const map = L.map("map", { preferCanvas: true }).setView([48.8566, 2.3522], 12);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
   }).addTo(map);
-//   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-//     attribution: "&copy; OpenStreetMap & CartoDB"
-//   }).addTo(map);
-
 
   const explorationLayer = L.layerGroup().addTo(map);
   const pathLayer = L.layerGroup().addTo(map);
-  const markers = [];
-  let barMarker = null;
+  const markersLayer = L.layerGroup().addTo(map);
+  const resultsLayer = L.layerGroup().addTo(map);
+
+  function switchMode(mode) {
+    currentMode = mode;
+    document.getElementById("tab-bars").classList.toggle("active", mode === "bars");
+    document.getElementById("tab-station").classList.toggle("active", mode === "station");
+    document.getElementById("stationRadiusBox").style.display = mode === "station" ? "block" : "none";
+    refreshRankings();
+  }
 
   function renderPersonInputs() {
     const container = document.getElementById("persons-container");
     container.innerHTML = "";
+    markersLayer.clearLayers();
+
+    document.getElementById("personCountBadge").textContent = `${persons.length}/10 potes`;
+    document.getElementById("btnAddPerson").style.display = persons.length >= 10 ? "none" : "block";
+
     persons.forEach((p, idx) => {
+      p.name = `Pote ${idx + 1}`;
       const card = document.createElement("div");
       card.className = "person-card";
       card.style.borderColor = COLORS[idx];
       card.innerHTML = `
-        <div style="display:flex; justify-content:space-between; cursor:pointer;" onclick="activePersonIdx=${idx}">
-          <strong style="color:${COLORS[idx]}">● ${p.name}</strong>
-          <small style="color:#94a3b8;">Cliquer carte = ${idx === activePersonIdx ? "Actif" : "Choisir"}</small>
+        <div class="person-header">
+          <strong style="color:${COLORS[idx]}; cursor:pointer;" onclick="activePersonIdx=${idx}; renderPersonInputs();">
+            ● ${p.name} ${idx === activePersonIdx ? "(clic carte actif)" : ""}
+          </strong>
+          ${persons.length > 2 ? `<button class="btn-remove" onclick="removePerson(${idx})" title="Supprimer">✕</button>` : ""}
         </div>
-        <input type="text" id="input-${idx}" value="${p.label}" placeholder="Chercher une adresse en IDF..." oninput="searchAddress(${idx}, this.value)" onfocus="activePersonIdx=${idx}" />
+        <input type="text" value="${p.label}" placeholder="Adresse ou gare IDF..."
+          oninput="searchAddress(${idx}, this.value)"
+          onfocus="activePersonIdx=${idx}" />
         <div id="sugg-${idx}" class="suggestions"></div>
       `;
       container.appendChild(card);
 
-      if (!markers[idx]) {
-        markers[idx] = L.circleMarker([p.lat, p.lon], {
-          radius: 9, fillColor: COLORS[idx], color: "#fff", weight: 2, fillOpacity: 1
-        }).addTo(map).bindPopup(p.name);
-      } else {
-        markers[idx].setLatLng([p.lat, p.lon]);
-      }
+      L.circleMarker([p.lat, p.lon], {
+        radius: 9, fillColor: COLORS[idx], color: "#fff", weight: 2, fillOpacity: 1
+      }).addTo(markersLayer).bindTooltip(p.name);
     });
   }
 
-  // Clic sur la carte pour déplacer l'ami sélectionné
+  function addPerson() {
+    if (persons.length >= 10) return;
+    // Position aléatoire légère dans Paris par défaut
+    const lat = 48.84 + Math.random() * 0.04;
+    const lon = 2.31 + Math.random() * 0.08;
+    persons.push({
+      name: `Pote ${persons.length + 1}`,
+      lat: parseFloat(lat.toFixed(4)),
+      lon: parseFloat(lon.toFixed(4)),
+      label: `${lat.toFixed(4)}, ${lon.toFixed(4)}`
+    });
+    activePersonIdx = persons.length - 1;
+    renderPersonInputs();
+  }
+
+  function removePerson(idx) {
+    if (persons.length <= 2) return;
+    persons.splice(idx, 1);
+    if (activePersonIdx >= persons.length) activePersonIdx = persons.length - 1;
+    renderPersonInputs();
+  }
+
   map.on("click", (e) => {
     persons[activePersonIdx].lat = e.latlng.lat;
     persons[activePersonIdx].lon = e.latlng.lng;
@@ -114,7 +222,6 @@
     renderPersonInputs();
   });
 
-  // Autocomplétion via API Adresse data.gouv.fr (BAN)
   let searchTimeouts = {};
   function searchAddress(idx, query) {
     clearTimeout(searchTimeouts[idx]);
@@ -145,7 +252,8 @@
   async function runAlgorithm() {
     explorationLayer.clearLayers();
     pathLayer.clearLayers();
-    if (barMarker) map.removeLayer(barMarker);
+    resultsLayer.clearLayers();
+    document.getElementById("osm-preview").style.display = "none";
 
     const res = await fetch("/api/solve", {
       method: "POST",
@@ -154,83 +262,250 @@
     });
     const data = await res.json();
     evaluatedBars = data.bars;
+    evaluatedStations = data.stations;
 
-    // Animation visuelle des chemins explorés par Dijkstra
     const exp = data.exploration;
     let i = 0;
-    const batchSize = 25;
+    const batchSize = 35;
 
     function animateStep() {
       for (let k = 0; k < batchSize && i < exp.length; k++, i++) {
         const seg = exp[i];
         L.polyline([seg.from, seg.to], {
-          color: COLORS[seg.p],
-          weight: seg.mode === "WALK" ? 1 : 2.5,
-          opacity: 0.35
+          color: COLORS[seg.p % COLORS.length],
+          weight: seg.mode === "WALK" ? 1 : 2.2,
+          opacity: 0.30
         }).addTo(explorationLayer);
       }
       if (i < exp.length) {
         requestAnimationFrame(animateStep);
       } else {
-        updateBestBarFromSlider();
+        refreshRankings();
       }
     }
     requestAnimationFrame(animateStep);
   }
 
-  async function updateBestBarFromSlider() {
+  function computeScore(times, alpha) {
+    const meanTime = times.reduce((a, b) => a + b, 0) / times.length;
+    const maxTime = Math.max(...times);
+    return (1 - alpha) * meanTime + alpha * maxTime;
+  }
+
+  function showBarPreview(bar, timesMin = null, extraWalkMin = 0) {
+    const box = document.getElementById("osm-preview");
+    box.style.display = "block";
+    document.getElementById("pv-type").textContent = (bar.type || "bar").toUpperCase();
+    const terr = document.getElementById("pv-terrace");
+    terr.textContent = bar.outdoor_seating ? "☀️ Terrasse : Oui" : "Terrasse : Non";
+    terr.style.background = bar.outdoor_seating ? "#34d399" : "#475569";
+
+    document.getElementById("pv-name").textContent = bar.name;
+    document.getElementById("pv-address").textContent = bar.address || "Non renseignée dans OSM";
+    document.getElementById("pv-hours").textContent = bar.opening_hours || "Non renseignés";
+    document.getElementById("pv-coords").textContent = `${bar.lat}, ${bar.lon}`;
+
+    const link = document.getElementById("pv-osmlink");
+    link.textContent = `#${bar.id}`;
+    link.href = `https://www.openstreetmap.org/node/${bar.id}`;
+
+    const pillsBox = document.getElementById("pv-times");
+    if (timesMin) {
+      pillsBox.innerHTML = timesMin.map((t, idx) => {
+        const total = (t + extraWalkMin).toFixed(1);
+        return `<span class="pill" style="color:${COLORS[idx]}">● Pote ${idx + 1}: ${total} min</span>`;
+      }).join("");
+    } else {
+      pillsBox.innerHTML = "";
+    }
+  }
+
+  async function refreshRankings() {
     const alpha = parseInt(document.getElementById("alphaSlider").value, 10) / 100.0;
     const label = document.getElementById("sliderLabel");
     if (alpha === 0) label.textContent = "Curseur : 0% — 100% Temps Moyen (Min-Sum)";
     else if (alpha === 1) label.textContent = "Curseur : 100% — 100% Égalitaire (Min-Max)";
     else label.textContent = `Curseur : ${Math.round(alpha * 100)}% — Compromis Moyen / Pire Temps`;
 
-    if (!evaluatedBars.length) return;
+    const container = document.getElementById("topListContainer");
+    const titleEl = document.getElementById("resultsTitle");
+    container.innerHTML = "";
 
-    let bestBarObj = null;
-    let bestScore = Infinity;
+    if (currentMode === "bars") {
+      if (!evaluatedBars.length) return;
+      titleEl.style.display = "block";
+      titleEl.textContent = "🏆 TOP 5 DES BARS OPTIMAUX :";
 
-    for (const item of evaluatedBars) {
-      const t = item.times_min;
-      const meanTime = t.reduce((a, b) => a + b, 0) / t.length;
-      const maxTime = Math.max(...t);
-      const score = (1 - alpha) * meanTime + alpha * maxTime;
-      if (score < bestScore) {
-        bestScore = score;
-        bestBarObj = item;
-      }
+      const ranked = evaluatedBars
+        .map(item => ({ ...item, score: computeScore(item.times_min, alpha) }))
+        .sort((a, b) => a.score - b.score)
+        .slice(0, 5);
+
+      ranked.forEach((item, rankIdx) => {
+        const card = document.createElement("div");
+        card.className = `rank-card ${rankIdx === 0 ? "selected" : ""}`;
+        card.id = `bar-rank-${rankIdx}`;
+        const mean = (item.times_min.reduce((a, b) => a + b, 0) / item.times_min.length).toFixed(1);
+        const max = Math.max(...item.times_min).toFixed(1);
+
+        card.innerHTML = `
+          <div class="rank-title">
+            <span>#${rankIdx + 1} ${item.bar.name}</span>
+            <span style="color:#34d399;">Moy ${mean}m | Max ${max}m</span>
+          </div>
+          <div class="rank-sub">${item.bar.type.toUpperCase()} • ${item.bar.address || "Paris"} ${item.bar.outdoor_seating ? "• ☀️ Terrasse" : ""}</div>
+          <div class="pills">
+            ${item.times_min.map((t, i) => `<span class="pill" style="color:${COLORS[i]}">P${i+1}: ${t}m</span>`).join("")}
+          </div>
+        `;
+        card.onclick = () => selectTopBar(item, rankIdx);
+        container.appendChild(card);
+      });
+
+      selectTopBar(ranked[0], 0);
+
+    } else {
+      // Mode Station Optimale + Rayon de N minutes
+      if (!evaluatedStations.length) return;
+      titleEl.style.display = "block";
+      titleEl.textContent = "🚇 TOP 3 STATIONS & BARS AUTOUR :";
+
+      const rankedStations = evaluatedStations
+        .map(st => ({ ...st, score: computeScore(st.times_min, alpha) }))
+        .sort((a, b) => a.score - b.score)
+        .slice(0, 3);
+
+      rankedStations.forEach((st, idx) => {
+        const card = document.createElement("div");
+        card.className = `rank-card ${idx === 0 ? "selected" : ""}`;
+        card.id = `st-rank-${idx}`;
+        const mean = (st.times_min.reduce((a, b) => a + b, 0) / st.times_min.length).toFixed(1);
+        const max = Math.max(...st.times_min).toFixed(1);
+
+        card.innerHTML = `
+          <div class="rank-title">
+            <span>🚇 #${idx + 1} ${st.name}</span>
+            <span style="color:#38bdf8;">Moy ${mean}m | Max ${max}m</span>
+          </div>
+          <div class="pills">
+            ${st.times_min.map((t, i) => `<span class="pill" style="color:${COLORS[i]}">P${i+1}: ${t}m</span>`).join("")}
+          </div>
+        `;
+        card.onclick = () => selectStation(st.hub_id, idx);
+        container.appendChild(card);
+      });
+
+      const nearbyHeader = document.createElement("div");
+      nearbyHeader.id = "nearby-bars-list";
+      nearbyHeader.style.marginTop = "8px";
+      container.appendChild(nearbyHeader);
+
+      selectStation(rankedStations[0].hub_id, 0);
     }
+  }
 
-    if (!bestBarObj) return;
-
-    // Afficher les infos du bar gagnant
-    const b = bestBarObj.bar;
-    document.getElementById("resultBox").style.display = "block";
-    document.getElementById("barName").textContent = `🏆 ${b.name}`;
-    document.getElementById("barAddress").textContent = `${b.address || "Paris"} • Horaires : ${b.opening_hours}`;
-    document.getElementById("barTimes").innerHTML = bestBarObj.times_min.map((t, idx) =>
-      `<div><span style="color:${COLORS[idx]}">● ${persons[idx].name} :</span> <strong>${t} min</strong></div>`
-    ).join("");
-
-    // Tracer les chemins gagnants vers ce bar
+  async function selectTopBar(item, rankIdx) {
+    document.querySelectorAll(".rank-card").forEach((el, i) => el.classList.toggle("selected", i === rankIdx));
     pathLayer.clearLayers();
-    if (barMarker) map.removeLayer(barMarker);
+    resultsLayer.clearLayers();
 
-    barMarker = L.circleMarker([b.lat, b.lon], {
+    const b = item.bar;
+    showBarPreview(b, item.times_min, 0);
+
+    L.circleMarker([b.lat, b.lon], {
       radius: 12, fillColor: "#10b981", color: "#ffffff", weight: 3, fillOpacity: 1
-    }).addTo(map).bindPopup(`<b>${b.name}</b>`).openPopup();
+    }).addTo(resultsLayer).bindPopup(`<b>#${rankIdx + 1} ${b.name}</b>`).openPopup();
 
-    const pathRes = await fetch(`/api/path/${bestBarObj.bar_index}`);
-    const pathData = await pathRes.json();
+    const res = await fetch(`/api/path/bar/${item.bar_index}`);
+    const data = await res.json();
+    drawPersonPaths(data.paths);
+  }
 
-    pathData.paths.forEach((personSegments, pIdx) => {
+  async function selectStation(hubId, rankIdx = 0) {
+    selectedStationHubId = hubId;
+    document.querySelectorAll("[id^='st-rank-']").forEach((el, i) => el.classList.toggle("selected", i === rankIdx));
+    await loadStationAndNearbyBars();
+  }
+
+  async function onWalkRadiusChange() {
+    const walkMin = document.getElementById("walkSlider").value;
+    document.getElementById("walkMinLabel").textContent = `${walkMin} min`;
+    if (selectedStationHubId) {
+      await loadStationAndNearbyBars();
+    }
+  }
+
+  async function loadStationAndNearbyBars() {
+    const walkMin = parseFloat(document.getElementById("walkSlider").value);
+    const res = await fetch(`/api/station/${selectedStationHubId}/details?walk_min=${walkMin}`);
+    const data = await res.json();
+
+    pathLayer.clearLayers();
+    resultsLayer.clearLayers();
+
+    const st = data.station;
+    drawPersonPaths(data.paths);
+
+    // Rayon visuel en mètres (vol d'oiseau équivalent à walkMin minutes de marche)
+    const radiusMeters = (walkMin * 60 * 1.25) / 1.3;
+    L.circle([st.lat, st.lon], {
+      radius: radiusMeters, color: "#38bdf8", weight: 2, dashArray: "6, 6", fillColor: "#38bdf8", fillOpacity: 0.12
+    }).addTo(resultsLayer);
+
+    L.circleMarker([st.lat, st.lon], {
+      radius: 11, fillColor: "#38bdf8", color: "#fff", weight: 3, fillOpacity: 1
+    }).addTo(resultsLayer).bindPopup(`<b>🚇 Station ${st.name}</b>`).openPopup();
+
+    const nearbyBox = document.getElementById("nearby-bars-list");
+    if (!nearbyBox) return;
+
+    nearbyBox.innerHTML = `<div style="font-size:0.82rem; font-weight:700; color:#34d399; margin:8px 0;">🍻 ${data.nearby_bars.length} bars à moins de ${walkMin} min à pied :</div>`;
+
+    data.nearby_bars.forEach((nb, idx) => {
+      const b = nb.bar;
+      const marker = L.circleMarker([b.lat, b.lon], {
+        radius: 7, fillColor: "#10b981", color: "#052e16", weight: 1.5, fillOpacity: 0.95
+      }).addTo(resultsLayer);
+
+      marker.on("click", () => {
+        showBarPreview(b, st.times_min, nb.walk_min);
+        marker.bindPopup(`<b>${b.name}</b><br>🚶 ${nb.walk_min} min (${nb.dist_m} m)`).openPopup();
+      });
+
+      if (idx < 15) {
+        const div = document.createElement("div");
+        div.className = "rank-card";
+        div.style.marginBottom = "6px";
+        div.innerHTML = `
+          <div class="rank-title">
+            <span>${b.name}</span>
+            <span style="color:#34d399;">+${nb.walk_min} min (${nb.dist_m}m)</span>
+          </div>
+          <div class="rank-sub">${b.type.toUpperCase()} • ${b.address || "Paris"} ${b.outdoor_seating ? "• ☀️ Terrasse" : ""}</div>
+        `;
+        div.onclick = () => {
+          showBarPreview(b, st.times_min, nb.walk_min);
+          map.panTo([b.lat, b.lon]);
+          marker.openPopup();
+        };
+        nearbyBox.appendChild(div);
+      }
+    });
+
+    if (data.nearby_bars.length > 0) {
+      showBarPreview(data.nearby_bars[0].bar, st.times_min, data.nearby_bars[0].walk_min);
+    }
+  }
+
+  function drawPersonPaths(paths) {
+    paths.forEach((personSegments, pIdx) => {
       personSegments.forEach(seg => {
         L.polyline([seg.from, seg.to], {
-          color: COLORS[pIdx],
+          color: COLORS[pIdx % COLORS.length],
           weight: seg.mode === "WALK" ? 4 : 6,
           dashArray: seg.mode === "WALK" ? "6, 8" : null,
           opacity: 0.95
-        }).addTo(pathLayer).bindTooltip(`${persons[pIdx].name} : ${seg.label}`);
+        }).addTo(pathLayer).bindTooltip(`Pote ${pIdx + 1} : ${seg.label}`);
       });
     });
   }
