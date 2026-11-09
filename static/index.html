@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bar Finder PoC — Rendez-vous Optimal à Paris</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; display: flex; height: 100vh; background: #0f172a; color: #f8fafc; }
+    #sidebar { width: 390px; padding: 20px; background: #1e293b; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; border-right: 1px solid #334155; }
+    #map { flex: 1; height: 100vh; }
+    h1 { font-size: 1.25rem; margin: 0; color: #38bdf8; }
+    .person-card { background: #0f172a; padding: 12px; border-radius: 8px; border-left: 4px solid; position: relative; }
+    .person-card input { width: 100%; padding: 8px; margin-top: 6px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white; }
+    .suggestions { background: #334155; border-radius: 6px; margin-top: 4px; max-height: 140px; overflow-y: auto; }
+    .suggestion-item { padding: 6px 10px; font-size: 0.85rem; cursor: pointer; border-bottom: 1px solid #475569; }
+    .suggestion-item:hover { background: #475569; }
+    button.primary { background: #38bdf8; color: #0f172a; border: none; padding: 12px; font-weight: 700; border-radius: 8px; cursor: pointer; font-size: 1rem; }
+    button.primary:hover { background: #0284c7; color: white; }
+    .slider-box { background: #0f172a; padding: 14px; border-radius: 8px; border: 1px solid #334155; }
+    input[type="range"] { width: 100%; margin: 10px 0; }
+    .result-card { background: #064e3b; padding: 14px; border-radius: 8px; border: 1px solid #10b981; display: none; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+    .leaflet-tile { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
+  </style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h1>🍻 Bar Finder PoC (3 Potes)</h1>
+  <small style="color:#94a3b8;">Tape une adresse (Paris ou Banlieue) ou clique sur un ami puis sur la carte.</small>
+
+  <div id="persons-container"></div>
+
+  <button class="primary" onclick="runAlgorithm()">🚀 Lancer la recherche visuelle</button>
+
+  <div class="slider-box">
+    <div style="display:flex; justify-content:space-between; font-size:0.85rem;">
+      <span>⚡ Temps Total (Min-Sum)</span>
+      <span>🤝 Équité (Min-Max)</span>
+    </div>
+    <input type="range" id="alphaSlider" min="0" max="100" value="50" oninput="updateBestBarFromSlider()" />
+    <div id="sliderLabel" style="text-align:center; font-size:0.85rem; color:#38bdf8;">Curseur : 50% Compromis Hybride</div>
+  </div>
+
+  <div id="resultBox" class="result-card">
+    <h3 id="barName" style="margin:0 0 6px 0; color:#34d399;"></h3>
+    <div id="barAddress" style="font-size:0.85rem; color:#d1fae5; margin-bottom:10px;"></div>
+    <div id="barTimes" style="font-size:0.9rem; line-height:1.6;"></div>
+  </div>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  const COLORS = ["#ef4444", "#3b82f6", "#eab308"]; // Rouge, Bleu, Jaune
+  const persons = [
+    { name: "Pote 1", lat: 48.7145, lon: 2.2458, label: "Massy-Palaiseau (RER B)" },
+    { name: "Pote 2", lat: 48.8924, lon: 2.3446, label: "Jules Joffrin (Paris 18e)" },
+    { name: "Pote 3", lat: 48.8471, lon: 2.4393, label: "Château de Vincennes (Ligne 1)" }
+  ];
+  let activePersonIdx = 0;
+  let evaluatedBars = [];
+
+  // Initialisation de la carte avec rendu Canvas pour la fluidité de l'animation
+  const map = L.map("map", { preferCanvas: true }).setView([48.8566, 2.3522], 12);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
+  }).addTo(map);
+//   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+//     attribution: "&copy; OpenStreetMap & CartoDB"
+//   }).addTo(map);
+
+
+  const explorationLayer = L.layerGroup().addTo(map);
+  const pathLayer = L.layerGroup().addTo(map);
+  const markers = [];
+  let barMarker = null;
+
+  function renderPersonInputs() {
+    const container = document.getElementById("persons-container");
+    container.innerHTML = "";
+    persons.forEach((p, idx) => {
+      const card = document.createElement("div");
+      card.className = "person-card";
+      card.style.borderColor = COLORS[idx];
+      card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; cursor:pointer;" onclick="activePersonIdx=${idx}">
+          <strong style="color:${COLORS[idx]}">● ${p.name}</strong>
+          <small style="color:#94a3b8;">Cliquer carte = ${idx === activePersonIdx ? "Actif" : "Choisir"}</small>
+        </div>
+        <input type="text" id="input-${idx}" value="${p.label}" placeholder="Chercher une adresse en IDF..." oninput="searchAddress(${idx}, this.value)" onfocus="activePersonIdx=${idx}" />
+        <div id="sugg-${idx}" class="suggestions"></div>
+      `;
+      container.appendChild(card);
+
+      if (!markers[idx]) {
+        markers[idx] = L.circleMarker([p.lat, p.lon], {
+          radius: 9, fillColor: COLORS[idx], color: "#fff", weight: 2, fillOpacity: 1
+        }).addTo(map).bindPopup(p.name);
+      } else {
+        markers[idx].setLatLng([p.lat, p.lon]);
+      }
+    });
+  }
+
+  // Clic sur la carte pour déplacer l'ami sélectionné
+  map.on("click", (e) => {
+    persons[activePersonIdx].lat = e.latlng.lat;
+    persons[activePersonIdx].lon = e.latlng.lng;
+    persons[activePersonIdx].label = `${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+    renderPersonInputs();
+  });
+
+  // Autocomplétion via API Adresse data.gouv.fr (BAN)
+  let searchTimeouts = {};
+  function searchAddress(idx, query) {
+    clearTimeout(searchTimeouts[idx]);
+    const suggBox = document.getElementById(`sugg-${idx}`);
+    if (query.length < 3) { suggBox.innerHTML = ""; return; }
+
+    searchTimeouts[idx] = setTimeout(async () => {
+      const res = await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=4&lat=48.8566&lon=2.3522`);
+      const data = await res.json();
+      suggBox.innerHTML = "";
+      data.features.forEach(feat => {
+        const div = document.createElement("div");
+        div.className = "suggestion-item";
+        div.textContent = feat.properties.label;
+        div.onclick = () => {
+          persons[idx].lon = feat.geometry.coordinates[0];
+          persons[idx].lat = feat.geometry.coordinates[1];
+          persons[idx].label = feat.properties.label;
+          suggBox.innerHTML = "";
+          renderPersonInputs();
+          map.panTo([persons[idx].lat, persons[idx].lon]);
+        };
+        suggBox.appendChild(div);
+      });
+    }, 250);
+  }
+
+  async function runAlgorithm() {
+    explorationLayer.clearLayers();
+    pathLayer.clearLayers();
+    if (barMarker) map.removeLayer(barMarker);
+
+    const res = await fetch("/api/solve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ locations: persons })
+    });
+    const data = await res.json();
+    evaluatedBars = data.bars;
+
+    // Animation visuelle des chemins explorés par Dijkstra
+    const exp = data.exploration;
+    let i = 0;
+    const batchSize = 25;
+
+    function animateStep() {
+      for (let k = 0; k < batchSize && i < exp.length; k++, i++) {
+        const seg = exp[i];
+        L.polyline([seg.from, seg.to], {
+          color: COLORS[seg.p],
+          weight: seg.mode === "WALK" ? 1 : 2.5,
+          opacity: 0.35
+        }).addTo(explorationLayer);
+      }
+      if (i < exp.length) {
+        requestAnimationFrame(animateStep);
+      } else {
+        updateBestBarFromSlider();
+      }
+    }
+    requestAnimationFrame(animateStep);
+  }
+
+  async function updateBestBarFromSlider() {
+    const alpha = parseInt(document.getElementById("alphaSlider").value, 10) / 100.0;
+    const label = document.getElementById("sliderLabel");
+    if (alpha === 0) label.textContent = "Curseur : 0% — 100% Temps Moyen (Min-Sum)";
+    else if (alpha === 1) label.textContent = "Curseur : 100% — 100% Égalitaire (Min-Max)";
+    else label.textContent = `Curseur : ${Math.round(alpha * 100)}% — Compromis Moyen / Pire Temps`;
+
+    if (!evaluatedBars.length) return;
+
+    let bestBarObj = null;
+    let bestScore = Infinity;
+
+    for (const item of evaluatedBars) {
+      const t = item.times_min;
+      const meanTime = t.reduce((a, b) => a + b, 0) / t.length;
+      const maxTime = Math.max(...t);
+      const score = (1 - alpha) * meanTime + alpha * maxTime;
+      if (score < bestScore) {
+        bestScore = score;
+        bestBarObj = item;
+      }
+    }
+
+    if (!bestBarObj) return;
+
+    // Afficher les infos du bar gagnant
+    const b = bestBarObj.bar;
+    document.getElementById("resultBox").style.display = "block";
+    document.getElementById("barName").textContent = `🏆 ${b.name}`;
+    document.getElementById("barAddress").textContent = `${b.address || "Paris"} • Horaires : ${b.opening_hours}`;
+    document.getElementById("barTimes").innerHTML = bestBarObj.times_min.map((t, idx) =>
+      `<div><span style="color:${COLORS[idx]}">● ${persons[idx].name} :</span> <strong>${t} min</strong></div>`
+    ).join("");
+
+    // Tracer les chemins gagnants vers ce bar
+    pathLayer.clearLayers();
+    if (barMarker) map.removeLayer(barMarker);
+
+    barMarker = L.circleMarker([b.lat, b.lon], {
+      radius: 12, fillColor: "#10b981", color: "#ffffff", weight: 3, fillOpacity: 1
+    }).addTo(map).bindPopup(`<b>${b.name}</b>`).openPopup();
+
+    const pathRes = await fetch(`/api/path/${bestBarObj.bar_index}`);
+    const pathData = await pathRes.json();
+
+    pathData.paths.forEach((personSegments, pIdx) => {
+      personSegments.forEach(seg => {
+        L.polyline([seg.from, seg.to], {
+          color: COLORS[pIdx],
+          weight: seg.mode === "WALK" ? 4 : 6,
+          dashArray: seg.mode === "WALK" ? "6, 8" : null,
+          opacity: 0.95
+        }).addTo(pathLayer).bindTooltip(`${persons[pIdx].name} : ${seg.label}`);
+      });
+    });
+  }
+
+  renderPersonInputs();
+</script>
+</body>
+</html>
