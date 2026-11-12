@@ -1,0 +1,23 @@
+# Environnement Python & uv
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Fichiers d'environnement (⚠️ CRITIQUE POUR REPO PUBLIC)
+.env
+.env.*
+*.env
+
+# IDE et OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Fichiers temporaires de scraping
+data/schlouk_state.json
+
+# NOTE : Le reste du dossier data/ (bars_paris.json, transit_graph.json, 
+# pints_external.json, idf_rail_raw.json) sera synchronisé exprès.

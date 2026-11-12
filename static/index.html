@@ -2,56 +2,61 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <title>Bar Finder v2 — Rendez-vous Optimal à Paris</title>
+  <title>Bar Finder v3 — Trajet, Pinte la moins chère & Seuil 4★</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
     body { margin: 0; display: flex; height: 100vh; background: #0f172a; color: #f8fafc; overflow: hidden; }
-    #sidebar { width: 430px; padding: 18px; background: #1e293b; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; border-right: 1px solid #334155; z-index: 10; }
+    #sidebar { width: 450px; padding: 16px; background: #1e293b; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; border-right: 1px solid #334155; z-index: 10; }
     #map-container { flex: 1; position: relative; height: 100vh; }
     #map { width: 100%; height: 100%; }
 
-    h1 { font-size: 1.2rem; margin: 0; color: #38bdf8; display: flex; justify-content: space-between; align-items: center; }
+    h1 { font-size: 1.15rem; margin: 0; color: #38bdf8; display: flex; justify-content: space-between; align-items: center; }
     .mode-tabs { display: flex; background: #0f172a; border-radius: 8px; padding: 4px; gap: 4px; border: 1px solid #334155; }
-    .mode-tab { flex: 1; text-align: center; padding: 8px 6px; font-size: 0.83rem; font-weight: 600; border-radius: 6px; cursor: pointer; color: #94a3b8; transition: 0.15s; }
+    .mode-tab { flex: 1; text-align: center; padding: 7px 6px; font-size: 0.82rem; font-weight: 600; border-radius: 6px; cursor: pointer; color: #94a3b8; transition: 0.15s; }
     .mode-tab.active { background: #38bdf8; color: #0f172a; }
 
-    .person-card { background: #0f172a; padding: 10px; border-radius: 8px; border-left: 4px solid; margin-bottom: 8px; }
-    .person-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; }
-    .person-card input { width: 100%; padding: 7px 9px; margin-top: 6px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white; font-size: 0.85rem; }
+    .person-card { background: #0f172a; padding: 8px 10px; border-radius: 8px; border-left: 4px solid; margin-bottom: 6px; }
+    .person-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; }
+    .person-card input { width: 100%; padding: 6px 8px; margin-top: 5px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white; font-size: 0.82rem; }
     .btn-remove { background: transparent; border: none; color: #ef4444; cursor: pointer; font-weight: bold; font-size: 0.9rem; }
-    .btn-add { background: #334155; color: #e2e8f0; border: 1px dashed #64748b; padding: 8px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 600; width: 100%; }
+    .btn-add { background: #334155; color: #e2e8f0; border: 1px dashed #64748b; padding: 7px; border-radius: 8px; cursor: pointer; font-size: 0.82rem; font-weight: 600; width: 100%; }
     .btn-add:hover { background: #475569; }
-    .leaflet-tile { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
 
-    .suggestions { background: #334155; border-radius: 6px; margin-top: 4px; max-height: 130px; overflow-y: auto; }
-    .suggestion-item { padding: 6px 10px; font-size: 0.8rem; cursor: pointer; border-bottom: 1px solid #475569; }
+    .suggestions { background: #334155; border-radius: 6px; margin-top: 4px; max-height: 120px; overflow-y: auto; }
+    .suggestion-item { padding: 6px 10px; font-size: 0.78rem; cursor: pointer; border-bottom: 1px solid #475569; }
     .suggestion-item:hover { background: #475569; }
 
-    button.primary { background: #38bdf8; color: #0f172a; border: none; padding: 11px; font-weight: 700; border-radius: 8px; cursor: pointer; font-size: 0.95rem; }
+    button.primary { background: #38bdf8; color: #0f172a; border: none; padding: 10px; font-weight: 700; border-radius: 8px; cursor: pointer; font-size: 0.92rem; }
     button.primary:hover { background: #0284c7; color: white; }
 
-    .slider-box { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
-    input[type="range"] { width: 100%; margin: 6px 0; accent-color: #38bdf8; }
+    .controls-panel { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; display: flex; flex-direction: column; gap: 10px; }
+    .control-row { display: flex; flex-direction: column; gap: 3px; }
+    .control-label { display: flex; justify-content: space-between; font-size: 0.78rem; color: #cbd5e1; }
+    input[type="range"] { width: 100%; margin: 2px 0; accent-color: #38bdf8; cursor: pointer; }
+
+    .toggles-row { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 4px; border-top: 1px solid #1e293b; }
+    .toggle-chip { flex: 1; display: flex; align-items: center; gap: 6px; background: #1e293b; padding: 7px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer; border: 1px solid #334155; user-select: none; }
+    .toggle-chip input { accent-color: #10b981; cursor: pointer; }
 
     .top-list { display: flex; flex-direction: column; gap: 8px; }
     .rank-card { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px 12px; cursor: pointer; transition: 0.15s; }
     .rank-card:hover { border-color: #38bdf8; }
     .rank-card.selected { border-color: #10b981; background: #064e3b; }
-    .rank-title { font-weight: 700; font-size: 0.92rem; color: #f8fafc; display: flex; justify-content: space-between; }
-    .rank-sub { font-size: 0.78rem; color: #94a3b8; margin-top: 3px; }
+    .rank-title { font-weight: 700; font-size: 0.9rem; color: #f8fafc; display: flex; justify-content: space-between; align-items: center; }
+    .rank-sub { font-size: 0.76rem; color: #94a3b8; margin-top: 4px; display: flex; gap: 6px; flex-wrap: wrap; }
     .pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-    .pill { font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; background: #1e293b; font-weight: 600; }
+    .pill { font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; background: #1e293b; font-weight: 600; }
+    .meta-tag { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-weight: 600; color: #e2e8f0; }
 
-    /* Carte de Preview OSM flottante sur la carte */
     #osm-preview {
-      position: absolute; bottom: 24px; right: 24px; width: 340px;
+      position: absolute; bottom: 24px; right: 24px; width: 365px;
       background: rgba(15, 23, 42, 0.96); border: 1px solid #10b981;
       border-radius: 12px; padding: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.6);
       z-index: 1000; display: none; backdrop-filter: blur(6px);
     }
-    .preview-badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; background: #10b981; color: #052e16; }
-    .preview-row { font-size: 0.82rem; margin-top: 8px; color: #cbd5e1; line-height: 1.4; }
+    .preview-badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; background: #10b981; color: #052e16; }
+    .preview-row { font-size: 0.81rem; margin-top: 7px; color: #cbd5e1; line-height: 1.4; }
     .preview-row strong { color: #f8fafc; }
   </style>
 </head>
@@ -60,16 +65,14 @@
 <div id="sidebar">
   <h1>
     <span>🍻 Bar Finder Paris</span>
-    <span id="personCountBadge" style="font-size:0.8rem; color:#94a3b8;">3/10 potes</span>
+    <span id="personCountBadge" style="font-size:0.78rem; color:#94a3b8;">3/10 potes</span>
   </h1>
 
-  <!-- Sélecteur de Mode -->
   <div class="mode-tabs">
     <div id="tab-bars" class="mode-tab active" onclick="switchMode('bars')">🍻 Top 5 Bars</div>
     <div id="tab-station" class="mode-tab" onclick="switchMode('station')">🚇 Station + Rayon</div>
   </div>
 
-  <!-- Liste dynamique de 2 à 10 personnes -->
   <div>
     <div id="persons-container"></div>
     <button id="btnAddPerson" class="btn-add" onclick="addPerson()">+ Ajouter un pote (max 10)</button>
@@ -77,34 +80,59 @@
 
   <button class="primary" onclick="runAlgorithm()">🚀 Calculer & Visualiser</button>
 
-  <!-- Curseur d'Équité Alpha -->
-  <div class="slider-box">
-    <div style="display:flex; justify-content:space-between; font-size:0.8rem;">
-      <span>⚡ Temps Moyen</span>
-      <span>🤝 Équité (Min-Max)</span>
+  <!-- Panneau de Décision Multicritère -->
+  <div class="controls-panel">
+    <div class="control-row">
+      <div class="control-label">
+        <span>⚖️ Équité Trajet (Temps Moyen ↔ Pire Temps)</span>
+        <strong id="alphaVal" style="color:#38bdf8;">50%</strong>
+      </div>
+      <input type="range" id="alphaSlider" min="0" max="100" value="50" oninput="refreshRankings()" />
     </div>
-    <input type="range" id="alphaSlider" min="0" max="100" value="50" oninput="refreshRankings()" />
-    <div id="sliderLabel" style="text-align:center; font-size:0.8rem; color:#38bdf8;">Curseur : 50% Compromis Hybride</div>
+
+    <div class="control-row">
+      <div class="control-label">
+        <span>🍺 Pinte la moins chère (priorité budget)</span>
+        <strong id="priceVal" style="color:#fbbf24;">60%</strong>
+      </div>
+      <input type="range" id="priceSlider" min="0" max="100" value="60" oninput="refreshRankings()" />
+    </div>
+
+    <div class="control-row">
+      <div class="control-label">
+        <span>⭐ Seuil Qualité (≥ 4.0★ OK, pénalise &lt; 3.8★)</span>
+        <strong id="ratingVal" style="color:#f472b6;">50%</strong>
+      </div>
+      <input type="range" id="ratingSlider" min="0" max="100" value="50" oninput="refreshRankings()" />
+    </div>
+
+    <div id="stationRadiusRow" class="control-row" style="display:none;">
+      <div class="control-label">
+        <span>🚶 Rayon de marche autour de la station</span>
+        <strong id="walkMinLabel" style="color:#34d399;">5 min</strong>
+      </div>
+      <input type="range" id="walkSlider" min="1" max="15" value="5" oninput="onWalkRadiusChange()" />
+    </div>
+
+    <div class="toggles-row">
+      <label class="toggle-chip" title="Utiliser le prix Happy Hour au lieu du tarif normal">
+        <input type="checkbox" id="hhToggle" checked onchange="refreshRankings()" />
+        <span>🍻 En Happy Hour</span>
+      </label>
+      <label class="toggle-chip" title="Évite Châtelet, les grandes gares et les mégahubs (>= 3 lignes)">
+        <input type="checkbox" id="antiHubToggle" onchange="refreshRankings()" />
+        <span>✨ Éviter gros hubs</span>
+      </label>
+    </div>
   </div>
 
-  <!-- Curseur de Rayon N minutes (Uniquement en mode Station) -->
-  <div id="stationRadiusBox" class="slider-box" style="display:none;">
-    <div style="display:flex; justify-content:space-between; font-size:0.82rem;">
-      <span>🚶 Rayon de marche autour de la station :</span>
-      <strong id="walkMinLabel" style="color:#34d399;">5 min</strong>
-    </div>
-    <input type="range" id="walkSlider" min="1" max="15" value="5" oninput="onWalkRadiusChange()" />
-  </div>
-
-  <!-- Résultats : Top 5 Bars ou Station + Bars dans le rayon -->
-  <div id="resultsTitle" style="font-size:0.85rem; font-weight:700; color:#94a3b8; display:none;"></div>
+  <div id="resultsTitle" style="font-size:0.82rem; font-weight:700; color:#94a3b8; display:none;"></div>
   <div id="topListContainer" class="top-list"></div>
 </div>
 
 <div id="map-container">
   <div id="map"></div>
 
-  <!-- Fiche de Preview complète OSM du bar sélectionné -->
   <div id="osm-preview">
     <div style="display:flex; justify-content:space-between; align-items:start;">
       <div>
@@ -114,9 +142,10 @@
       <button onclick="document.getElementById('osm-preview').style.display='none'" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:1rem;">✕</button>
     </div>
     <h3 id="pv-name" style="margin:8px 0 4px 0; color:#34d399; font-size:1.1rem;"></h3>
+    <div class="preview-row">🍺 <strong>Pinte :</strong> <span id="pv-pint"></span></div>
+    <div class="preview-row">⭐ <strong>Avis Google :</strong> <span id="pv-rating"></span></div>
     <div class="preview-row">📍 <strong>Adresse :</strong> <span id="pv-address"></span></div>
     <div class="preview-row">🕒 <strong>Horaires :</strong> <span id="pv-hours"></span></div>
-    <div class="preview-row">🧭 <strong>Coordonnées :</strong> <span id="pv-coords"></span></div>
     <div class="preview-row">🆔 <strong>OSM ID :</strong> <a id="pv-osmlink" href="#" target="_blank" style="color:#38bdf8;"></a></div>
     <div id="pv-times" class="pills" style="margin-top:10px;"></div>
   </div>
@@ -136,15 +165,14 @@
   ];
 
   let activePersonIdx = 0;
-  let currentMode = "bars"; // 'bars' ou 'station'
+  let currentMode = "bars";
   let evaluatedBars = [];
   let evaluatedStations = [];
   let selectedStationHubId = null;
 
   const map = L.map("map", { preferCanvas: true }).setView([48.8566, 2.3522], 12);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    attribution: "&copy; OpenStreetMap & CartoDB"
   }).addTo(map);
 
   const explorationLayer = L.layerGroup().addTo(map);
@@ -156,7 +184,7 @@
     currentMode = mode;
     document.getElementById("tab-bars").classList.toggle("active", mode === "bars");
     document.getElementById("tab-station").classList.toggle("active", mode === "station");
-    document.getElementById("stationRadiusBox").style.display = mode === "station" ? "block" : "none";
+    document.getElementById("stationRadiusRow").style.display = mode === "station" ? "flex" : "none";
     refreshRankings();
   }
 
@@ -176,9 +204,9 @@
       card.innerHTML = `
         <div class="person-header">
           <strong style="color:${COLORS[idx]}; cursor:pointer;" onclick="activePersonIdx=${idx}; renderPersonInputs();">
-            ● ${p.name} ${idx === activePersonIdx ? "(clic carte actif)" : ""}
+            ● ${p.name} ${idx === activePersonIdx ? "(clic actif)" : ""}
           </strong>
-          ${persons.length > 2 ? `<button class="btn-remove" onclick="removePerson(${idx})" title="Supprimer">✕</button>` : ""}
+          ${persons.length > 2 ? `<button class="btn-remove" onclick="removePerson(${idx})">✕</button>` : ""}
         </div>
         <input type="text" value="${p.label}" placeholder="Adresse ou gare IDF..."
           oninput="searchAddress(${idx}, this.value)"
@@ -195,7 +223,6 @@
 
   function addPerson() {
     if (persons.length >= 10) return;
-    // Position aléatoire légère dans Paris par défaut
     const lat = 48.84 + Math.random() * 0.04;
     const lon = 2.31 + Math.random() * 0.08;
     persons.push({
@@ -286,10 +313,48 @@
     requestAnimationFrame(animateStep);
   }
 
-  function computeScore(times, alpha) {
+  function getActivePrice(bar) {
+    const isHH = document.getElementById("hhToggle").checked;
+    return isHH ? (bar.happy_hour_price || bar.pint_price || 6.0) : (bar.pint_price || 6.5);
+  }
+
+  /**
+   * Formule d'équilibre Prix + Seuil 4.0 étoiles :
+   * - Favorise fortement la pinte la moins chère
+   * - Si note >= 4.0★ : le bar est validé (léger bonus entre 4.0 et 5.0 pour départager à prix égal)
+   * - Si note < 4.0★ : pénalité quadratique forte pour éviter les bars mal notés même s'ils ne sont pas chers
+   */
+  function computeQualityPriceAdjustment(bar, wPrice, wRating) {
+    const price = getActivePrice(bar);
+    // 1€ de plus = jusqu'à 7.5 min de pénalité (priorité à la pinte la moins chère)
+    const pricePenalty = wPrice * ((price - 3.5) * 7.5);
+
+    const rating = bar.bayesian_rating || bar.rating || 4.0;
+    let ratingEffect = 0;
+    if (rating < 4.0) {
+      // Bar sous 4.0★ : malus quadratique (ex: 3.5★ => +10 min de malus, 3.0★ => +40 min)
+      const deficit = 4.0 - rating;
+      ratingEffect = wRating * (deficit * deficit * 40.0);
+    } else {
+      // Bar >= 4.0★ : c'est OK ! Petit bonus doux (max -4 min à 5.0★) pour ne pas écraser l'avantage d'une pinte pas chère
+      ratingEffect = -wRating * ((rating - 4.0) * 4.0);
+    }
+
+    return pricePenalty + ratingEffect;
+  }
+
+  function computeBarMultiScore(item, alpha, wPrice, wRating, antiHub) {
+    const times = item.times_min;
     const meanTime = times.reduce((a, b) => a + b, 0) / times.length;
     const maxTime = Math.max(...times);
-    return (1 - alpha) * meanTime + alpha * maxTime;
+    let timeScore = (1 - alpha) * meanTime + alpha * maxTime;
+
+    if (antiHub) {
+      if (item.is_megahub_area) timeScore += 12.0;
+      else if (item.max_hub_degree > 2) timeScore += (item.max_hub_degree - 2) * 3.0;
+    }
+
+    return timeScore + computeQualityPriceAdjustment(item.bar, wPrice, wRating);
   }
 
   function showBarPreview(bar, timesMin = null, extraWalkMin = 0) {
@@ -297,13 +362,15 @@
     box.style.display = "block";
     document.getElementById("pv-type").textContent = (bar.type || "bar").toUpperCase();
     const terr = document.getElementById("pv-terrace");
-    terr.textContent = bar.outdoor_seating ? "☀️ Terrasse : Oui" : "Terrasse : Non";
+    terr.textContent = bar.outdoor_seating ? "☀️ Terrasse" : "Sans terrasse";
     terr.style.background = bar.outdoor_seating ? "#34d399" : "#475569";
 
+    const isSchlouk = (bar.price_source || "").startsWith("Schlouk");
     document.getElementById("pv-name").textContent = bar.name;
-    document.getElementById("pv-address").textContent = bar.address || "Non renseignée dans OSM";
+    document.getElementById("pv-pint").innerHTML = `<strong style="color:#fbbf24;">${bar.happy_hour_price || "?"}€ en HH</strong> (${bar.hh_hours || "17h-20h"}) • Normal : ${bar.pint_price || "?"}€ ${isSchlouk ? "✅" : ""}`;
+    document.getElementById("pv-rating").innerHTML = `<strong style="color:#f472b6;">⭐ ${bar.rating || "?"}/5</strong> (${bar.reviews_count || 0} avis • Bayésien : ${bar.bayesian_rating || "?"}★)`;
+    document.getElementById("pv-address").textContent = bar.address || "Paris";
     document.getElementById("pv-hours").textContent = bar.opening_hours || "Non renseignés";
-    document.getElementById("pv-coords").textContent = `${bar.lat}, ${bar.lon}`;
 
     const link = document.getElementById("pv-osmlink");
     link.textContent = `#${bar.id}`;
@@ -322,10 +389,14 @@
 
   async function refreshRankings() {
     const alpha = parseInt(document.getElementById("alphaSlider").value, 10) / 100.0;
-    const label = document.getElementById("sliderLabel");
-    if (alpha === 0) label.textContent = "Curseur : 0% — 100% Temps Moyen (Min-Sum)";
-    else if (alpha === 1) label.textContent = "Curseur : 100% — 100% Égalitaire (Min-Max)";
-    else label.textContent = `Curseur : ${Math.round(alpha * 100)}% — Compromis Moyen / Pire Temps`;
+    const wPrice = parseInt(document.getElementById("priceSlider").value, 10) / 100.0;
+    const wRating = parseInt(document.getElementById("ratingSlider").value, 10) / 100.0;
+    const antiHub = document.getElementById("antiHubToggle").checked;
+    const isHH = document.getElementById("hhToggle").checked;
+
+    document.getElementById("alphaVal").textContent = `${Math.round(alpha * 100)}%`;
+    document.getElementById("priceVal").textContent = `${Math.round(wPrice * 100)}%`;
+    document.getElementById("ratingVal").textContent = `${Math.round(wRating * 100)}%`;
 
     const container = document.getElementById("topListContainer");
     const titleEl = document.getElementById("resultsTitle");
@@ -334,26 +405,30 @@
     if (currentMode === "bars") {
       if (!evaluatedBars.length) return;
       titleEl.style.display = "block";
-      titleEl.textContent = "🏆 TOP 5 DES BARS OPTIMAUX :";
+      titleEl.textContent = antiHub ? "🏆 TOP 5 BARS (HORS MÉGAHUBS) :" : "🏆 TOP 5 DES BARS OPTIMAUX :";
 
       const ranked = evaluatedBars
-        .map(item => ({ ...item, score: computeScore(item.times_min, alpha) }))
+        .map(item => ({ ...item, score: computeBarMultiScore(item, alpha, wPrice, wRating, antiHub) }))
         .sort((a, b) => a.score - b.score)
         .slice(0, 5);
 
       ranked.forEach((item, rankIdx) => {
+        const b = item.bar;
         const card = document.createElement("div");
         card.className = `rank-card ${rankIdx === 0 ? "selected" : ""}`;
-        card.id = `bar-rank-${rankIdx}`;
-        const mean = (item.times_min.reduce((a, b) => a + b, 0) / item.times_min.length).toFixed(1);
-        const max = Math.max(...item.times_min).toFixed(1);
+        const mean = (item.times_min.reduce((a, c) => a + c, 0) / item.times_min.length).toFixed(1);
+        const price = getActivePrice(b);
 
         card.innerHTML = `
           <div class="rank-title">
-            <span>#${rankIdx + 1} ${item.bar.name}</span>
-            <span style="color:#34d399;">Moy ${mean}m | Max ${max}m</span>
+            <span>#${rankIdx + 1} ${b.name}</span>
+            <span style="color:#34d399;">Moy ${mean}m</span>
           </div>
-          <div class="rank-sub">${item.bar.type.toUpperCase()} • ${item.bar.address || "Paris"} ${item.bar.outdoor_seating ? "• ☀️ Terrasse" : ""}</div>
+          <div class="rank-sub">
+            <span class="meta-tag" style="color:#fbbf24;">🍺 ${price}€ ${isHH ? "(HH)" : ""}</span>
+            <span class="meta-tag" style="color:${(b.rating || 4) >= 4.0 ? '#34d399' : '#f87171'};">⭐ ${b.rating || "?"} (${b.reviews_count || 0})</span>
+            ${b.outdoor_seating ? `<span class="meta-tag" style="color:#38bdf8;">☀️ Terrasse</span>` : ""}
+          </div>
           <div class="pills">
             ${item.times_min.map((t, i) => `<span class="pill" style="color:${COLORS[i]}">P${i+1}: ${t}m</span>`).join("")}
           </div>
@@ -365,13 +440,22 @@
       selectTopBar(ranked[0], 0);
 
     } else {
-      // Mode Station Optimale + Rayon de N minutes
       if (!evaluatedStations.length) return;
       titleEl.style.display = "block";
-      titleEl.textContent = "🚇 TOP 3 STATIONS & BARS AUTOUR :";
+      titleEl.textContent = antiHub ? "🚇 TOP 3 STATIONS DE QUARTIER (ANTI-HUB) :" : "🚇 TOP 3 STATIONS OPTIMALES :";
 
-      const rankedStations = evaluatedStations
-        .map(st => ({ ...st, score: computeScore(st.times_min, alpha) }))
+      let pool = evaluatedStations;
+      if (antiHub) {
+        pool = evaluatedStations.filter(st => !st.is_megahub);
+        if (!pool.length) pool = evaluatedStations;
+      }
+
+      const rankedStations = pool
+        .map(st => {
+          const mean = st.times_min.reduce((a, b) => a + b, 0) / st.times_min.length;
+          const max = Math.max(...st.times_min);
+          return { ...st, score: (1 - alpha) * mean + alpha * max };
+        })
         .sort((a, b) => a.score - b.score)
         .slice(0, 3);
 
@@ -380,12 +464,11 @@
         card.className = `rank-card ${idx === 0 ? "selected" : ""}`;
         card.id = `st-rank-${idx}`;
         const mean = (st.times_min.reduce((a, b) => a + b, 0) / st.times_min.length).toFixed(1);
-        const max = Math.max(...st.times_min).toFixed(1);
 
         card.innerHTML = `
           <div class="rank-title">
             <span>🚇 #${idx + 1} ${st.name}</span>
-            <span style="color:#38bdf8;">Moy ${mean}m | Max ${max}m</span>
+            <span style="color:#38bdf8;">Moy ${mean}m (${st.line_count} lig.)</span>
           </div>
           <div class="pills">
             ${st.times_min.map((t, i) => `<span class="pill" style="color:${COLORS[i]}">P${i+1}: ${t}m</span>`).join("")}
@@ -437,6 +520,10 @@
 
   async function loadStationAndNearbyBars() {
     const walkMin = parseFloat(document.getElementById("walkSlider").value);
+    const wPrice = parseInt(document.getElementById("priceSlider").value, 10) / 100.0;
+    const wRating = parseInt(document.getElementById("ratingSlider").value, 10) / 100.0;
+    const isHH = document.getElementById("hhToggle").checked;
+
     const res = await fetch(`/api/station/${selectedStationHubId}/details?walk_min=${walkMin}`);
     const data = await res.json();
 
@@ -446,7 +533,6 @@
     const st = data.station;
     drawPersonPaths(data.paths);
 
-    // Rayon visuel en mètres (vol d'oiseau équivalent à walkMin minutes de marche)
     const radiusMeters = (walkMin * 60 * 1.25) / 1.3;
     L.circle([st.lat, st.lon], {
       radius: radiusMeters, color: "#38bdf8", weight: 2, dashArray: "6, 6", fillColor: "#38bdf8", fillOpacity: 0.12
@@ -459,17 +545,24 @@
     const nearbyBox = document.getElementById("nearby-bars-list");
     if (!nearbyBox) return;
 
-    nearbyBox.innerHTML = `<div style="font-size:0.82rem; font-weight:700; color:#34d399; margin:8px 0;">🍻 ${data.nearby_bars.length} bars à moins de ${walkMin} min à pied :</div>`;
+    // Même formule autour de la station : Pinte la moins chère + Seuil de sécurité à 4.0★
+    const sortedNearby = data.nearby_bars.map(nb => {
+      const localScore = nb.walk_min + computeQualityPriceAdjustment(nb.bar, wPrice, wRating);
+      return { ...nb, localScore };
+    }).sort((a, b) => a.localScore - b.localScore);
 
-    data.nearby_bars.forEach((nb, idx) => {
+    nearbyBox.innerHTML = `<div style="font-size:0.8rem; font-weight:700; color:#34d399; margin:8px 0;">🍻 ${sortedNearby.length} bars à moins de ${walkMin} min (triés par Pinte & Seuil 4★) :</div>`;
+
+    sortedNearby.forEach((nb, idx) => {
       const b = nb.bar;
+      const price = getActivePrice(b);
       const marker = L.circleMarker([b.lat, b.lon], {
         radius: 7, fillColor: "#10b981", color: "#052e16", weight: 1.5, fillOpacity: 0.95
       }).addTo(resultsLayer);
 
       marker.on("click", () => {
         showBarPreview(b, st.times_min, nb.walk_min);
-        marker.bindPopup(`<b>${b.name}</b><br>🚶 ${nb.walk_min} min (${nb.dist_m} m)`).openPopup();
+        marker.bindPopup(`<b>${b.name}</b><br>🍺 ${price}€ • ⭐ ${b.rating}/5<br>🚶 +${nb.walk_min} min`).openPopup();
       });
 
       if (idx < 15) {
@@ -479,9 +572,12 @@
         div.innerHTML = `
           <div class="rank-title">
             <span>${b.name}</span>
-            <span style="color:#34d399;">+${nb.walk_min} min (${nb.dist_m}m)</span>
+            <span style="color:#34d399;">+${nb.walk_min}m</span>
           </div>
-          <div class="rank-sub">${b.type.toUpperCase()} • ${b.address || "Paris"} ${b.outdoor_seating ? "• ☀️ Terrasse" : ""}</div>
+          <div class="rank-sub">
+            <span class="meta-tag" style="color:#fbbf24;">🍺 ${price}€ ${isHH ? "(HH)" : ""}</span>
+            <span class="meta-tag" style="color:${(b.rating || 4) >= 4.0 ? '#34d399' : '#f87171'};">⭐ ${b.rating} (${b.reviews_count})</span>
+          </div>
         `;
         div.onclick = () => {
           showBarPreview(b, st.times_min, nb.walk_min);
@@ -492,8 +588,8 @@
       }
     });
 
-    if (data.nearby_bars.length > 0) {
-      showBarPreview(data.nearby_bars[0].bar, st.times_min, data.nearby_bars[0].walk_min);
+    if (sortedNearby.length > 0) {
+      showBarPreview(sortedNearby[0].bar, st.times_min, sortedNearby[0].walk_min);
     }
   }
 
